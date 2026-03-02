@@ -5,7 +5,7 @@ require __DIR__ . "/../config/db.php";
 $pageTitle = "Disponibilités";
 require __DIR__ . "/../includes/header.php";
 
-$doctorId = intval($_GET['doctor_id'] ?? 0);
+$doctorId = isset($_GET['doctor_id']) ? (int)$_GET['doctor_id'] : 0;
 
 if ($doctorId <= 0) {
     echo "<div class='alert alert-danger'>Médecin invalide</div>";
@@ -13,14 +13,15 @@ if ($doctorId <= 0) {
     exit;
 }
 
+// Vérifier existence médecin
 $stmt = $pdo->prepare("
-    SELECT u.first_name, u.last_name, d.specialty
+    SELECT u.id, u.first_name, u.last_name, d.specialty
     FROM users u
-    JOIN doctors d ON u.id = d.user_id
-    WHERE u.id = ?
+    LEFT JOIN doctors d ON u.id = d.user_id
+    WHERE u.id = ? AND u.role = 'DOCTOR'
 ");
 $stmt->execute([$doctorId]);
-$doctor = $stmt->fetch();
+$doctor = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$doctor) {
     echo "<div class='alert alert-danger'>Médecin introuvable</div>";
@@ -28,16 +29,14 @@ if (!$doctor) {
     exit;
 }
 
-// Récupérer créneaux disponibles
+// Récupérer créneaux
 $stmt = $pdo->prepare("
     SELECT * FROM availability_slots
-    WHERE doctor_id = ?
-    AND is_booked = 0
-    AND slot_time >= NOW()
+    WHERE doctor_id = ? AND is_booked = 0
     ORDER BY slot_time ASC
 ");
 $stmt->execute([$doctorId]);
-$slots = $stmt->fetchAll();
+$slots = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <h3 class="fw-bold mb-2">

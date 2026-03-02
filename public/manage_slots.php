@@ -2,39 +2,36 @@
 require __DIR__ . "/../includes/auth_guard.php";
 require __DIR__ . "/../config/db.php";
 
-if ($_SESSION['user']['role'] !== 'DOCTOR') {
+if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'DOCTOR') {
     header("Location: dashboard.php");
     exit;
 }
 
-$doctorId = $_SESSION['user']['id'];
+$doctorId = (int)$_SESSION['user']['id'];
 
 /* =========================
    AJOUT CRENEAU
 ========================= */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['slot_time'])) {
 
-    $slotTime = $_POST['slot_time'];
+    $slotRaw = $_POST['slot_time'];
 
-    if (!empty($slotTime)) {
+    if (!empty($slotRaw)) {
 
-        // Empêcher doublon
-        $check = $pdo->prepare("
-            SELECT id FROM availability_slots
-            WHERE doctor_id = ? AND slot_time = ?
+        // Convertir correctement le datetime-local
+        $slotTime = str_replace('T', ' ', $slotRaw) . ':00';
+
+        $insert = $pdo->prepare("
+            INSERT INTO availability_slots (doctor_id, slot_time, is_booked)
+            VALUES (?, ?, 0)
         ");
-        $check->execute([$doctorId, $slotTime]);
 
-        if (!$check->fetch()) {
-            $stmt = $pdo->prepare("
-                INSERT INTO availability_slots (doctor_id, slot_time)
-                VALUES (?, ?)
-            ");
-            $stmt->execute([$doctorId, $slotTime]);
-        }
+        $insert->execute([$doctorId, $slotTime]);
     }
-}
 
+    header("Location: manage_slots.php");
+    exit;
+}
 /* =========================
    SUPPRESSION CRENEAU
 ========================= */
@@ -42,11 +39,12 @@ if (isset($_GET['delete'])) {
 
     $slotId = (int)$_GET['delete'];
 
-    $stmt = $pdo->prepare("
+    $delete = $pdo->prepare("
         DELETE FROM availability_slots
         WHERE id = ? AND doctor_id = ? AND is_booked = 0
     ");
-    $stmt->execute([$slotId, $doctorId]);
+
+    $delete->execute([$slotId, $doctorId]);
 
     header("Location: manage_slots.php");
     exit;
@@ -61,7 +59,7 @@ $stmt = $pdo->prepare("
     ORDER BY slot_time ASC
 ");
 $stmt->execute([$doctorId]);
-$slots = $stmt->fetchAll();
+$slots = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $pageTitle = "Mes créneaux";
 require __DIR__ . "/../includes/header.php";
@@ -69,14 +67,10 @@ require __DIR__ . "/../includes/header.php";
 
 <h3 class="fw-bold mb-4">Gérer mes créneaux</h3>
 
-<!-- =========================
-     FORMULAIRE AJOUT
-========================= -->
-
 <div class="card shadow-sm mb-4">
     <div class="card-body">
 
-        <form method="POST" class="row g-3">
+        <form method="POST" action="" class="row g-3">
             <div class="col-md-8">
                 <input type="datetime-local"
                        name="slot_time"
@@ -84,7 +78,7 @@ require __DIR__ . "/../includes/header.php";
                        required>
             </div>
             <div class="col-md-4">
-                <button class="btn btn-primary w-100">
+                <button type="submit" class="btn btn-primary w-100">
                     Ajouter créneau
                 </button>
             </div>
@@ -92,10 +86,6 @@ require __DIR__ . "/../includes/header.php";
 
     </div>
 </div>
-
-<!-- =========================
-     LISTE CRENEAUX
-========================= -->
 
 <div class="card shadow-sm">
     <div class="card-body">
@@ -120,7 +110,6 @@ require __DIR__ . "/../includes/header.php";
 
                 <?php foreach ($slots as $slot): ?>
                     <tr>
-
                         <td>
                             <?= date("d/m/Y H:i", strtotime($slot['slot_time'])) ?>
                         </td>
@@ -143,7 +132,6 @@ require __DIR__ . "/../includes/header.php";
                                 —
                             <?php endif; ?>
                         </td>
-
                     </tr>
                 <?php endforeach; ?>
 
