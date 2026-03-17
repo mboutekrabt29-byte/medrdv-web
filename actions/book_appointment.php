@@ -31,10 +31,10 @@ if (!$slot) {
 
 // Créer rendez-vous
 $stmt = $pdo->prepare("
-    INSERT INTO appointments (patient_id, doctor_id, appt_at, status)
-    VALUES (?, ?, ?, 'PENDING')
+    INSERT INTO appointments (patient_id, doctor_id, slot_id, appt_at, status)
+    VALUES (?, ?, ?, ?, 'PENDING')
 ");
-$stmt->execute([$patientId, $doctorId, $slot['slot_time']]);
+$stmt->execute([$patientId, $doctorId, $slotId, $slot['slot_time']]);
 
 // Marquer créneau comme réservé
 $stmt = $pdo->prepare("

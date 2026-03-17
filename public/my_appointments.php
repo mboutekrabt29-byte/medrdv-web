@@ -1,3 +1,4 @@
+
 <?php
 require __DIR__ . "/../includes/auth_guard.php";
 require __DIR__ . "/../config/db.php";
@@ -7,7 +8,7 @@ require __DIR__ . "/../includes/header.php";
 
 $userId = $_SESSION['user']['id'];
 
-// Récupérer les rendez-vous du patient
+// récupérer les rendez-vous du patient
 $stmt = $pdo->prepare("
     SELECT a.id, a.appt_at, a.status,
            u.first_name, u.last_name
@@ -17,85 +18,120 @@ $stmt = $pdo->prepare("
     ORDER BY a.appt_at DESC
 ");
 $stmt->execute([$userId]);
-$appointments = $stmt->fetchAll();
+$appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <h3 class="fw-bold mb-4">Mes rendez-vous</h3>
 
 <?php if (!$appointments): ?>
-    <div class="alert alert-info">
-        Aucun rendez-vous pour le moment.
-    </div>
+
+<div class="alert alert-info">
+    Aucun rendez-vous pour le moment.
+</div>
+
 <?php else: ?>
 
 <div class="card shadow-sm">
-    <div class="card-body">
-        <div class="table-responsive">
-            <table class="table align-middle">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Médecin</th>
-                        <th>Statut</th>
-                    </tr>
-                </thead>
-                <tbody>
+<div class="card-body">
 
-                <?php foreach ($appointments as $appt): ?>
-                    <tr>
+<div class="table-responsive">
+<table class="table align-middle">
 
-                        <td>
-                            <?= date("d/m/Y H:i", strtotime($appt['appt_at'])) ?>
-                        </td>
+<thead>
+<tr>
+<th>Date</th>
+<th>Médecin</th>
+<th>Statut</th>
+<th>Actions</th>
+</tr>
+</thead>
 
-                        <td>
-                            Dr. <?= htmlspecialchars($appt['first_name'] . " " . $appt['last_name']) ?>
-                        </td>
+<tbody>
 
-                        <td>
+<?php foreach ($appointments as $appt): ?>
 
-                            <?php if ($appt['status'] === 'PENDING'): ?>
-                                <span class="badge bg-warning text-dark">
-                                    En attente
-                                </span>
+<tr>
 
-                            <?php elseif ($appt['status'] === 'CONFIRMED'): ?>
-                                <span class="badge bg-success">
-                                    Confirmé
-                                </span>
+<td>
+<?= date("d/m/Y H:i", strtotime($appt['appt_at'])) ?>
+</td>
 
-                                <form method="POST"
-                                      action="../actions/cancel_appointment.php"
-                                      class="d-inline ms-2">
-                                    <input type="hidden"
-                                           name="id"
-                                           value="<?= $appt['id'] ?>">
-                                    <button class="btn btn-sm btn-outline-danger">
-                                        Annuler
-                                    </button>
-                                </form>
+<td>
+Dr. <?= htmlspecialchars($appt['first_name']." ".$appt['last_name']) ?>
+</td>
 
-                            <?php elseif ($appt['status'] === 'CANCELLED'): ?>
-                                <span class="badge bg-secondary">
-                                    Annulé
-                                </span>
+<td>
 
-                            <?php else: ?>
-                                <span class="badge bg-dark">
-                                    Terminé
-                                </span>
+<?php if ($appt['status'] === 'PENDING'): ?>
 
-                            <?php endif; ?>
+<span class="badge bg-warning text-dark">
+En attente
+</span>
 
-                        </td>
+<?php elseif ($appt['status'] === 'CONFIRMED'): ?>
 
-                    </tr>
-                <?php endforeach; ?>
+<span class="badge bg-success">
+Confirmé
+</span>
 
-                </tbody>
-            </table>
-        </div>
-    </div>
+<?php elseif ($appt['status'] === 'CANCELLED'): ?>
+
+<span class="badge bg-secondary">
+Annulé
+</span>
+
+<?php else: ?>
+
+<span class="badge bg-dark">
+Terminé
+</span>
+
+<?php endif; ?>
+
+</td>
+
+<td>
+
+<?php if ($appt['status'] === 'PENDING' ): ?>
+
+<!-- modifier -->
+<a href="edit_appointment.php?id=<?= $appt['id'] ?>"
+class="btn btn-sm btn-outline-primary me-2">
+Modifier
+</a>
+
+<!-- annuler -->
+<form method="POST"
+action="../actions/cancel_appointment.php"
+class="d-inline">
+
+<input type="hidden"
+name="id"
+value="<?= $appt['id'] ?>">
+
+<button class="btn btn-sm btn-outline-danger">
+Annuler
+</button>
+
+</form>
+
+<?php else: ?>
+
+—
+
+<?php endif; ?>
+
+</td>
+
+</tr>
+
+<?php endforeach; ?>
+
+</tbody>
+</table>
+</div>
+
+</div>
 </div>
 
 <?php endif; ?>
