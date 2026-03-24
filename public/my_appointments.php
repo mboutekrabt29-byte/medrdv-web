@@ -1,14 +1,16 @@
-
 <?php
+declare(strict_types=1);
+
 require __DIR__ . "/../includes/auth_guard.php";
 require __DIR__ . "/../config/db.php";
+require __DIR__ . "/../includes/csrf.php";
 
 $pageTitle = "Mes rendez-vous";
 require __DIR__ . "/../includes/header.php";
 
-$userId = $_SESSION['user']['id'];
+$userId = (int)$_SESSION['user']['id'];
 
-// récupérer les rendez-vous du patient
+// Récupérer les rendez-vous du patient
 $stmt = $pdo->prepare("
     SELECT a.id, a.appt_at, a.status,
            u.first_name, u.last_name
@@ -23,116 +25,117 @@ $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 <h3 class="fw-bold mb-4">Mes rendez-vous</h3>
 
+<?php if (!empty($_GET['ok'])): ?>
+    <div class="alert alert-success">
+        <?= htmlspecialchars((string)$_GET['ok'], ENT_QUOTES, 'UTF-8') ?>
+    </div>
+<?php endif; ?>
+
+<?php if (!empty($_GET['err'])): ?>
+    <div class="alert alert-danger">
+        <?= htmlspecialchars((string)$_GET['err'], ENT_QUOTES, 'UTF-8') ?>
+    </div>
+<?php endif; ?>
+
 <?php if (!$appointments): ?>
 
-<div class="alert alert-info">
-    Aucun rendez-vous pour le moment.
-</div>
+    <div class="alert alert-info">
+        Aucun rendez-vous pour le moment.
+    </div>
 
 <?php else: ?>
 
-<div class="card shadow-sm">
-<div class="card-body">
+    <div class="card shadow-sm border-0">
+        <div class="card-body">
 
-<div class="table-responsive">
-<table class="table align-middle">
+            <div class="table-responsive">
+                <table class="table align-middle">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Médecin</th>
+                            <th>Statut</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
 
-<thead>
-<tr>
-<th>Date</th>
-<th>Médecin</th>
-<th>Statut</th>
-<th>Actions</th>
-</tr>
-</thead>
+                    <tbody>
 
-<tbody>
+                    <?php foreach ($appointments as $appt): ?>
+                        <?php
+                        $apptId = (int)$appt['id'];
+                        $doctorName = htmlspecialchars(
+                            (string)$appt['first_name'] . ' ' . (string)$appt['last_name'],
+                            ENT_QUOTES,
+                            'UTF-8'
+                        );
+                        $status = (string)$appt['status'];
+                        ?>
 
-<?php foreach ($appointments as $appt): ?>
+                        <tr>
+                            <td>
+                                <?= date("d/m/Y H:i", strtotime((string)$appt['appt_at'])) ?>
+                            </td>
 
-<tr>
+                            <td>
+                                Dr. <?= $doctorName ?>
+                            </td>
 
-<td>
-<?= date("d/m/Y H:i", strtotime($appt['appt_at'])) ?>
-</td>
+                            <td>
+                                <?php if ($status === 'PENDING'): ?>
+                                    <span class="badge bg-warning text-dark">En attente</span>
+                                <?php elseif ($status === 'CONFIRMED'): ?>
+                                    <span class="badge bg-success">Confirmé</span>
+                                <?php elseif ($status === 'CANCELLED'): ?>
+                                    <span class="badge bg-secondary">Annulé</span>
+                                <?php elseif ($status === 'COMPLETED'): ?>
+                                    <span class="badge bg-dark">Terminé</span>
+                                <?php else: ?>
+                                    <span class="badge bg-light text-dark">
+                                        <?= htmlspecialchars($status, ENT_QUOTES, 'UTF-8') ?>
+                                    </span>
+                                <?php endif; ?>
+                            </td>
 
-<td>
-Dr. <?= htmlspecialchars($appt['first_name']." ".$appt['last_name']) ?>
-</td>
+                            <td>
+                                <?php if ($status === 'PENDING' || $status === 'CONFIRMED'): ?>
 
-<td>
+                                    <a
+                                        href="edit_appointment.php?id=<?= $apptId ?>"
+                                        class="btn btn-sm btn-outline-primary me-2"
+                                    >
+                                        Modifier
+                                    </a>
 
-<?php if ($appt['status'] === 'PENDING'): ?>
+                                    <form
+                                        method="POST"
+                                        action="../actions/cancel_appointment.php"
+                                        class="d-inline"
+                                        onsubmit="return confirm('Voulez-vous vraiment annuler ce rendez-vous ?');"
+                                    >
+                                        <?= csrf_input() ?>
+                                        <input type="hidden" name="id" value="<?= $apptId ?>">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            Annuler
+                                        </button>
+                                    </form>
 
-<span class="badge bg-warning text-dark">
-En attente
-</span>
+                                <?php else: ?>
 
-<?php elseif ($appt['status'] === 'CONFIRMED'): ?>
+                                    —
 
-<span class="badge bg-success">
-Confirmé
-</span>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
 
-<?php elseif ($appt['status'] === 'CANCELLED'): ?>
+                    <?php endforeach; ?>
 
-<span class="badge bg-secondary">
-Annulé
-</span>
+                    </tbody>
+                </table>
+            </div>
 
-<?php else: ?>
-
-<span class="badge bg-dark">
-Terminé
-</span>
-
-<?php endif; ?>
-
-</td>
-
-<td>
-
-<?php if ($appt['status'] === 'PENDING' ): ?>
-
-<!-- modifier -->
-<a href="edit_appointment.php?id=<?= $appt['id'] ?>"
-class="btn btn-sm btn-outline-primary me-2">
-Modifier
-</a>
-
-<!-- annuler -->
-<form method="POST"
-action="../actions/cancel_appointment.php"
-class="d-inline">
-
-<input type="hidden"
-name="id"
-value="<?= $appt['id'] ?>">
-
-<button class="btn btn-sm btn-outline-danger">
-Annuler
-</button>
-
-</form>
-
-<?php else: ?>
-
-—
-
-<?php endif; ?>
-
-</td>
-
-</tr>
-
-<?php endforeach; ?>
-
-</tbody>
-</table>
-</div>
-
-</div>
-</div>
+        </div>
+    </div>
 
 <?php endif; ?>
 

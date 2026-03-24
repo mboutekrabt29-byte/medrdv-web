@@ -11,62 +11,89 @@ $doctorId = (int)$_SESSION['user']['id'];
 $apptId   = (int)($_POST['id'] ?? 0);
 $action   = $_POST['action'] ?? '';
 
-if ($apptId <= 0) {
-    header("Location: ../public/dashboard.php");
+if ($apptId <= 0 || !in_array($action, ['confirm', 'cancel', 'complete'], true)) {
+    header("Location: ../public/dashboard.php?err=Requête invalide");
     exit;
 }
 
-// Récupérer le rendez-vous
-$stmt = $pdo->prepare("
-    SELECT * FROM appointments
-    WHERE id = ? AND doctor_id = ?
-");
-$stmt->execute([$apptId, $doctorId]);
-$appointment = $stmt->fetch(PDO::FETCH_ASSOC);
+try {
+    $pdo->beginTransaction();
 
-if (!$appointment) {
-    header("Location: ../public/dashboard.php");
-    exit;
-}
+    $stmt = $pdo->prepare("
+        SELECT *
+        FROM appointments
+        WHERE id = ? AND doctor_id = ?
+        FOR UPDATE
+    ");
+    $stmt->execute([$apptId, $doctorId]);
+    $appointment = $stmt->fetch(PDO::FETCH_ASSOC);
 
-// ================= ACTIONS =================
-
-if ($action === 'confirm') {
-
-    $pdo->prepare("
-        UPDATE appointments
-        SET status = 'CONFIRMED'
-        WHERE id = ?
-    ")->execute([$apptId]);
-
-} elseif ($action === 'cancel') {
-
-    // Annuler le rendez-vous
-    $pdo->prepare("
-        UPDATE appointments
-        SET status = 'CANCELLED'
-        WHERE id = ?
-    ")->execute([$apptId]);
-
-    // Libérer le créneau seulement si slot_id existe
-    if (!empty($appointment['slot_id'])) {
-
-        $pdo->prepare("
-            UPDATE availability_slots
-            SET is_booked = 0
-            WHERE id = ?
-        ")->execute([$appointment['slot_id']]);
-
+    if (!$appointment) {
+        $pdo->rollBack();
+        header("Location: ../public/dashboard.php?err=Rendez-vous introuvable");
+        exit;
     }
 
-} elseif ($action === 'complete') {
+    if ($action === 'confirm') {
+        if ($appointment['status'] !== 'PENDING') {
+            $pdo->rollBack();
+            header("Location: ../public/dashboard.php?err=Action impossible");
+            exit;
+        }
 
-    $pdo->prepare("
-        UPDATE appointments
-        SET status = 'COMPLETED'
-        WHERE id = ?
-    ")->execute([$apptId]);
+        $pdo->prepare("
+            UPDATE appointments
+            SET status = 'CONFIRMED'
+            WHERE id = ?
+        ")->execute([$apptId]);
+    }
+
+    if ($action === 'cancel') {
+        if (in_array($appointment['status'], ['CANCELLED', 'COMPLETED'], true)) {
+            $pdo->rollBack();
+            header("Location: ../public/dashboard.php?err=Action impossible");
+            exit;
+        }
+
+        $pdo->prepare("
+            UPDATE appointments
+            SET status = 'CANCELLED'
+            WHERE id = ?
+        ")->execute([$apptId]);
+
+        if (!empty($appointment['slot_id'])) {
+            $pdo->prepare("
+                UPDATE availability_slots
+                SET is_booked = 0
+                WHERE id = ?
+            ")->execute([$appointment['slot_id']]);
+        }
+    }
+
+    if ($action === 'complete') {
+        if ($appointment['status'] !== 'CONFIRMED') {
+            $pdo->rollBack();
+            header("Location: ../public/dashboard.php?err=Action impossible");
+            exit;
+        }
+
+        $pdo->prepare("
+            UPDATE appointments
+            SET status = 'COMPLETED'
+            WHERE id = ?
+        ")->execute([$apptId]);
+    }
+
+    $pdo->commit();
+
+    header("Location: ../public/dashboard.php?ok=Statut mis à jour");
+    exit;
+
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
+    header("Location: ../public/dashboard.php?err=Erreur lors de la mise à jour");
+    exit;
 }
-
-header("Location: ../public/dashboard.php");
-exit;
