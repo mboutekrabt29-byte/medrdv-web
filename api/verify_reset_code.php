@@ -7,87 +7,88 @@ header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit;
+http_response_code(200);
+exit;
 }
 
-require __DIR__ . "/../config/db.php";
+require __DIR__ . '/../config/db.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    echo json_encode([
-        'success' => false,
-        'message' => 'Méthode non autorisée'
-    ]);
-    exit;
+http_response_code(405);
+echo json_encode([
+'success' => false,
+'message' => 'Méthode non autorisée'
+]);
+exit;
 }
 
 $input = json_decode(file_get_contents("php://input"), true);
 
-$channel = strtoupper(trim((string)($input['channel'] ?? '')));
-$value = trim((string)($input['value'] ?? ''));
+$identifier = trim((string)($input['identifier'] ?? ''));
 $code = trim((string)($input['code'] ?? ''));
 
-if (!in_array($channel, ['EMAIL', 'PHONE'], true) || $value === '' || $code === '') {
-    http_response_code(400);
-    echo json_encode([
-        'success' => false,
-        'message' => 'Données invalides'
-    ]);
-    exit;
+if ($identifier === '' || $code === '') {
+http_response_code(400);
+echo json_encode([
+'success' => false,
+'message' => 'Données manquantes'
+]);
+exit;
 }
 
 try {
-    if ($channel === 'EMAIL') {
-        $stmt = $pdo->prepare("
-            SELECT id
-            FROM password_resets
-            WHERE email = ?
-              AND reset_code = ?
-              AND channel = 'EMAIL'
-              AND used = 0
-              AND expires_at >= NOW()
-            ORDER BY id DESC
-            LIMIT 1
-        ");
-        $stmt->execute([mb_strtolower($value), $code]);
-    } else {
-        $stmt = $pdo->prepare("
-            SELECT id
-            FROM password_resets
-            WHERE phone = ?
-              AND reset_code = ?
-              AND channel = 'PHONE'
-              AND used = 0
-              AND expires_at >= NOW()
-            ORDER BY id DESC
-            LIMIT 1
-        ");
-        $stmt->execute([$value, $code]);
-    }
+$stmt = $pdo->prepare("
+SELECT id
+FROM users
+WHERE email = ? OR phone = ?
+LIMIT 1
+");
+$stmt->execute([$identifier, $identifier]);
+$user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    $reset = $stmt->fetch(PDO::FETCH_ASSOC);
+if (!$user) {
+http_response_code(404);
+echo json_encode([
+'success' => false,
+'message' => 'Compte introuvable'
+]);
+exit;
+}
 
-    if (!$reset) {
-        http_response_code(400);
-        echo json_encode([
-            'success' => false,
-            'message' => 'Code invalide ou expiré'
-        ]);
-        exit;
-    }
+$userId = (int)$user['id'];
 
-    echo json_encode([
-        'success' => true,
-        'message' => 'Code valide'
-    ]);
-    exit;
+$stmt = $pdo->prepare("
+SELECT id
+FROM password_resets
+WHERE user_id = ?
+AND code = ?
+AND expires_at >= NOW()
+ORDER BY id DESC
+LIMIT 1
+");
+$stmt->execute([$userId, $code]);
+$reset = $stmt->fetch(PDO::FETCH_ASSOC);
+
+if (!$reset) {
+http_response_code(400);
+echo json_encode([
+'success' => false,
+'message' => 'Code invalide ou expiré'
+]);
+exit;
+}
+
+echo json_encode([
+'success' => true,
+'message' => 'Code valide'
+]);
+exit;
 
 } catch (Throwable $e) {
-    http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'message' => $e->getMessage()
-    ]);
-    exit;
+http_response_code(500);
+echo json_encode([
+'success' => false,
+'message' => $e->getMessage()
+]);
+exit;
 }

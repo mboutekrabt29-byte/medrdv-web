@@ -22,13 +22,12 @@ echo json_encode([
 exit;
 }
 
-$input = json_decode(file_get_contents("php://input"), true);
+$input = json_decode(file_get_contents('php://input'), true);
 
-$identifier = trim((string)($input['identifier'] ?? ''));
+$email = trim((string)($input['email'] ?? ''));
 $code = trim((string)($input['code'] ?? ''));
-$newPassword = trim((string)($input['new_password'] ?? ''));
 
-if ($identifier === '' || $code === '' || $newPassword === '') {
+if ($email === '' || $code === '') {
 http_response_code(400);
 echo json_encode([
 'success' => false,
@@ -39,38 +38,19 @@ exit;
 
 try {
 $stmt = $pdo->prepare("
-SELECT id
-FROM users
-WHERE email = ? OR phone = ?
-LIMIT 1
-");
-$stmt->execute([$identifier, $identifier]);
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-if (!$user) {
-http_response_code(404);
-echo json_encode([
-'success' => false,
-'message' => 'Compte introuvable'
-]);
-exit;
-}
-
-$userId = (int)$user['id'];
-
-$stmt = $pdo->prepare("
-SELECT id
-FROM password_resets
-WHERE user_id = ?
+SELECT *
+FROM doctor_verifications
+WHERE email = ?
 AND code = ?
+AND is_verified = 0
 AND expires_at >= NOW()
 ORDER BY id DESC
 LIMIT 1
 ");
-$stmt->execute([$userId, $code]);
-$reset = $stmt->fetch(PDO::FETCH_ASSOC);
+$stmt->execute([$email, $code]);
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-if (!$reset) {
+if (!$row) {
 http_response_code(400);
 echo json_encode([
 'success' => false,
@@ -79,29 +59,54 @@ echo json_encode([
 exit;
 }
 
-$passwordHash = password_hash($newPassword, PASSWORD_DEFAULT);
+$pdo->beginTransaction();
+
+$hash = password_hash($row['password_plain'], PASSWORD_BCRYPT);
 
 $stmt = $pdo->prepare("
-UPDATE users
-SET password_hash = ?
+INSERT INTO users (role, first_name, last_name, email, phone, password_hash)
+VALUES ('DOCTOR', ?, ?, ?, ?, ?)
+");
+$stmt->execute([
+$row['first_name'],
+$row['last_name'],
+$row['email'],
+$row['phone'],
+$hash
+]);
+
+$userId = (int)$pdo->lastInsertId();
+
+$stmt = $pdo->prepare("
+INSERT INTO doctors (user_id, specialty, city, clinic_address)
+VALUES (?, ?, 'Kouba', 'Clinique Inaya - Kouba')
+");
+$stmt->execute([$userId, $row['specialty']]);
+
+$stmt = $pdo->prepare("
+UPDATE doctor_verifications
+SET is_verified = 1
 WHERE id = ?
 ");
-$stmt->execute([$passwordHash, $userId]);
+$stmt->execute([(int)$row['id']]);
 
-$stmt = $pdo->prepare("DELETE FROM password_resets WHERE user_id = ?");
-$stmt->execute([$userId]);
+$pdo->commit();
 
 echo json_encode([
 'success' => true,
-'message' => 'Mot de passe réinitialisé avec succès'
+'message' => 'Compte médecin créé avec succès'
 ]);
 exit;
 
 } catch (Throwable $e) {
+if ($pdo->inTransaction()) {
+$pdo->rollBack();
+}
+
 http_response_code(500);
 echo json_encode([
 'success' => false,
-'message' => $e->getMessage()
+'message' => 'Erreur serveur'
 ]);
 exit;
 }

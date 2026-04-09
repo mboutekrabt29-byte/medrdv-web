@@ -24,48 +24,57 @@ exit;
 
 $input = json_decode(file_get_contents("php://input"), true);
 
-$identifier = trim((string)($input['identifier'] ?? ''));
-$password = trim((string)($input['password'] ?? ''));
+$slotId = (int)($input['slot_id'] ?? 0);
+$doctorId = (int)($input['doctor_id'] ?? 0);
 
-if ($identifier === '' || $password === '') {
+if ($slotId <= 0 || $doctorId <= 0) {
 http_response_code(400);
 echo json_encode([
 'success' => false,
-'message' => 'Email ou téléphone et mot de passe requis'
+'message' => 'Données invalides'
 ]);
 exit;
 }
 
 try {
 $stmt = $pdo->prepare("
-SELECT id, first_name, last_name, email, phone, password_hash, role
-FROM users
-WHERE email = ? OR phone = ?
+SELECT id, is_booked
+FROM availability_slots
+WHERE id = ?
+AND doctor_id = ?
 LIMIT 1
 ");
-$stmt->execute([$identifier, $identifier]);
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
+$stmt->execute([$slotId, $doctorId]);
+$slot = $stmt->fetch(PDO::FETCH_ASSOC);
 
-if (!$user || !password_verify($password, $user['password_hash'])) {
-http_response_code(401);
+if (!$slot) {
+http_response_code(404);
 echo json_encode([
 'success' => false,
-'message' => 'Identifiants invalides'
+'message' => 'Créneau introuvable'
 ]);
 exit;
 }
 
+if ((int)$slot['is_booked'] === 1) {
+http_response_code(400);
+echo json_encode([
+'success' => false,
+'message' => 'Impossible de bloquer un créneau déjà réservé'
+]);
+exit;
+}
+
+$stmt = $pdo->prepare("
+DELETE FROM availability_slots
+WHERE id = ?
+AND doctor_id = ?
+");
+$stmt->execute([$slotId, $doctorId]);
+
 echo json_encode([
 'success' => true,
-'message' => 'Connexion réussie',
-'user' => [
-'id' => (int)$user['id'],
-'first_name' => $user['first_name'],
-'last_name' => $user['last_name'],
-'email' => $user['email'],
-'phone' => $user['phone'],
-'role' => $user['role'],
-]
+'message' => 'Créneau bloqué / supprimé avec succès'
 ]);
 exit;
 

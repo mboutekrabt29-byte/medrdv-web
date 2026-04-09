@@ -24,48 +24,28 @@ exit;
 
 $input = json_decode(file_get_contents("php://input"), true);
 
-$identifier = trim((string)($input['identifier'] ?? ''));
-$password = trim((string)($input['password'] ?? ''));
+$appointmentId = (int)($input['appointment_id'] ?? 0);
 
-if ($identifier === '' || $password === '') {
+if ($appointmentId <= 0) {
 http_response_code(400);
 echo json_encode([
 'success' => false,
-'message' => 'Email ou téléphone et mot de passe requis'
+'message' => 'appointment_id manquant'
 ]);
 exit;
 }
 
 try {
 $stmt = $pdo->prepare("
-SELECT id, first_name, last_name, email, phone, password_hash, role
-FROM users
-WHERE email = ? OR phone = ?
-LIMIT 1
+UPDATE appointments
+SET status = 'COMPLETED'
+WHERE id = ?
 ");
-$stmt->execute([$identifier, $identifier]);
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-if (!$user || !password_verify($password, $user['password_hash'])) {
-http_response_code(401);
-echo json_encode([
-'success' => false,
-'message' => 'Identifiants invalides'
-]);
-exit;
-}
+$stmt->execute([$appointmentId]);
 
 echo json_encode([
 'success' => true,
-'message' => 'Connexion réussie',
-'user' => [
-'id' => (int)$user['id'],
-'first_name' => $user['first_name'],
-'last_name' => $user['last_name'],
-'email' => $user['email'],
-'phone' => $user['phone'],
-'role' => $user['role'],
-]
+'message' => 'Rendez-vous terminé avec succès'
 ]);
 exit;
 

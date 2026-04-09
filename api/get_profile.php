@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
+header('Access-Control-Allow-Methods: GET, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -11,9 +11,9 @@ http_response_code(200);
 exit;
 }
 
-require __DIR__ . '/../config/db.php';
+require __DIR__ . "/../config/db.php";
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 http_response_code(405);
 echo json_encode([
 'success' => false,
@@ -22,49 +22,45 @@ echo json_encode([
 exit;
 }
 
-$input = json_decode(file_get_contents("php://input"), true);
+$userId = (int)($_GET['user_id'] ?? 0);
 
-$identifier = trim((string)($input['identifier'] ?? ''));
-$password = trim((string)($input['password'] ?? ''));
-
-if ($identifier === '' || $password === '') {
+if ($userId <= 0) {
 http_response_code(400);
 echo json_encode([
 'success' => false,
-'message' => 'Email ou téléphone et mot de passe requis'
+'message' => 'user_id manquant'
 ]);
 exit;
 }
 
 try {
 $stmt = $pdo->prepare("
-SELECT id, first_name, last_name, email, phone, password_hash, role
+SELECT id, first_name, last_name, email, phone, role
 FROM users
-WHERE email = ? OR phone = ?
+WHERE id = ?
 LIMIT 1
 ");
-$stmt->execute([$identifier, $identifier]);
+$stmt->execute([$userId]);
 $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-if (!$user || !password_verify($password, $user['password_hash'])) {
-http_response_code(401);
+if (!$user) {
+http_response_code(404);
 echo json_encode([
 'success' => false,
-'message' => 'Identifiants invalides'
+'message' => 'Utilisateur introuvable'
 ]);
 exit;
 }
 
 echo json_encode([
 'success' => true,
-'message' => 'Connexion réussie',
 'user' => [
 'id' => (int)$user['id'],
 'first_name' => $user['first_name'],
 'last_name' => $user['last_name'],
 'email' => $user['email'],
 'phone' => $user['phone'],
-'role' => $user['role'],
+'role' => $user['role']
 ]
 ]);
 exit;

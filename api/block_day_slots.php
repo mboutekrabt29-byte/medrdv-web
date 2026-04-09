@@ -24,48 +24,50 @@ exit;
 
 $input = json_decode(file_get_contents("php://input"), true);
 
-$identifier = trim((string)($input['identifier'] ?? ''));
-$password = trim((string)($input['password'] ?? ''));
+$doctorId = (int)($input['doctor_id'] ?? 0);
+$date = trim((string)($input['date'] ?? ''));
 
-if ($identifier === '' || $password === '') {
+if ($doctorId <= 0 || $date === '') {
 http_response_code(400);
 echo json_encode([
 'success' => false,
-'message' => 'Email ou téléphone et mot de passe requis'
+'message' => 'doctor_id ou date manquant'
 ]);
 exit;
 }
 
 try {
 $stmt = $pdo->prepare("
-SELECT id, first_name, last_name, email, phone, password_hash, role
-FROM users
-WHERE email = ? OR phone = ?
-LIMIT 1
+SELECT COUNT(*) AS total_free
+FROM availability_slots
+WHERE doctor_id = ?
+AND DATE(slot_time) = ?
+AND is_booked = 0
 ");
-$stmt->execute([$identifier, $identifier]);
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
+$stmt->execute([$doctorId, $date]);
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-if (!$user || !password_verify($password, $user['password_hash'])) {
-http_response_code(401);
+$freeCount = (int)($row['total_free'] ?? 0);
+
+if ($freeCount === 0) {
 echo json_encode([
-'success' => false,
-'message' => 'Identifiants invalides'
+'success' => true,
+'message' => 'Aucun créneau libre à bloquer pour cette date'
 ]);
 exit;
 }
 
+$stmt = $pdo->prepare("
+DELETE FROM availability_slots
+WHERE doctor_id = ?
+AND DATE(slot_time) = ?
+AND is_booked = 0
+");
+$stmt->execute([$doctorId, $date]);
+
 echo json_encode([
 'success' => true,
-'message' => 'Connexion réussie',
-'user' => [
-'id' => (int)$user['id'],
-'first_name' => $user['first_name'],
-'last_name' => $user['last_name'],
-'email' => $user['email'],
-'phone' => $user['phone'],
-'role' => $user['role'],
-]
+'message' => 'Journée bloquée avec succès'
 ]);
 exit;
 

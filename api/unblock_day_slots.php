@@ -24,48 +24,50 @@ exit;
 
 $input = json_decode(file_get_contents("php://input"), true);
 
-$identifier = trim((string)($input['identifier'] ?? ''));
-$password = trim((string)($input['password'] ?? ''));
+$doctorId = (int)($input['doctor_id'] ?? 0);
+$date = trim((string)($input['date'] ?? ''));
 
-if ($identifier === '' || $password === '') {
+if ($doctorId <= 0 || $date === '') {
 http_response_code(400);
 echo json_encode([
 'success' => false,
-'message' => 'Email ou téléphone et mot de passe requis'
+'message' => 'doctor_id ou date manquant'
 ]);
 exit;
 }
 
+$defaultTimes = ['09:00', '10:00', '11:00', '14:00', '15:00', '16:00'];
+
 try {
+$addedCount = 0;
+
+foreach ($defaultTimes as $time) {
+$slotTime = $date . ' ' . $time . ':00';
+
 $stmt = $pdo->prepare("
-SELECT id, first_name, last_name, email, phone, password_hash, role
-FROM users
-WHERE email = ? OR phone = ?
+SELECT id
+FROM availability_slots
+WHERE doctor_id = ?
+AND slot_time = ?
 LIMIT 1
 ");
-$stmt->execute([$identifier, $identifier]);
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
+$stmt->execute([$doctorId, $slotTime]);
 
-if (!$user || !password_verify($password, $user['password_hash'])) {
-http_response_code(401);
-echo json_encode([
-'success' => false,
-'message' => 'Identifiants invalides'
-]);
-exit;
+if (!$stmt->fetch()) {
+$stmt = $pdo->prepare("
+INSERT INTO availability_slots (doctor_id, slot_time, is_booked)
+VALUES (?, ?, 0)
+");
+$stmt->execute([$doctorId, $slotTime]);
+$addedCount++;
+}
 }
 
 echo json_encode([
 'success' => true,
-'message' => 'Connexion réussie',
-'user' => [
-'id' => (int)$user['id'],
-'first_name' => $user['first_name'],
-'last_name' => $user['last_name'],
-'email' => $user['email'],
-'phone' => $user['phone'],
-'role' => $user['role'],
-]
+'message' => $addedCount > 0
+? 'Journée débloquée avec succès'
+: 'Les créneaux standards existent déjà pour cette journée'
 ]);
 exit;
 

@@ -11,7 +11,7 @@ http_response_code(200);
 exit;
 }
 
-require __DIR__ . '/../config/db.php';
+require __DIR__ . "/../config/db.php";
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 http_response_code(405);
@@ -24,48 +24,49 @@ exit;
 
 $input = json_decode(file_get_contents("php://input"), true);
 
-$identifier = trim((string)($input['identifier'] ?? ''));
-$password = trim((string)($input['password'] ?? ''));
+$userId = (int)($input['user_id'] ?? 0);
+$firstName = trim((string)($input['first_name'] ?? ''));
+$lastName = trim((string)($input['last_name'] ?? ''));
+$phone = trim((string)($input['phone'] ?? ''));
 
-if ($identifier === '' || $password === '') {
+if ($userId <= 0 || $firstName === '' || $lastName === '' || $phone === '') {
 http_response_code(400);
 echo json_encode([
 'success' => false,
-'message' => 'Email ou téléphone et mot de passe requis'
+'message' => 'Données invalides'
 ]);
 exit;
 }
 
 try {
 $stmt = $pdo->prepare("
-SELECT id, first_name, last_name, email, phone, password_hash, role
+SELECT id
 FROM users
-WHERE email = ? OR phone = ?
+WHERE phone = ?
+AND id <> ?
 LIMIT 1
 ");
-$stmt->execute([$identifier, $identifier]);
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
+$stmt->execute([$phone, $userId]);
 
-if (!$user || !password_verify($password, $user['password_hash'])) {
-http_response_code(401);
+if ($stmt->fetch()) {
+http_response_code(409);
 echo json_encode([
 'success' => false,
-'message' => 'Identifiants invalides'
+'message' => 'Ce numéro de téléphone est déjà utilisé'
 ]);
 exit;
 }
 
+$stmt = $pdo->prepare("
+UPDATE users
+SET first_name = ?, last_name = ?, phone = ?
+WHERE id = ?
+");
+$stmt->execute([$firstName, $lastName, $phone, $userId]);
+
 echo json_encode([
 'success' => true,
-'message' => 'Connexion réussie',
-'user' => [
-'id' => (int)$user['id'],
-'first_name' => $user['first_name'],
-'last_name' => $user['last_name'],
-'email' => $user['email'],
-'phone' => $user['phone'],
-'role' => $user['role'],
-]
+'message' => 'Profil mis à jour avec succès'
 ]);
 exit;
 
